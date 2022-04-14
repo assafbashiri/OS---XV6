@@ -13,6 +13,7 @@ struct proc proc[NPROC];
 struct proc *initproc;
 
 int nextpid = 1;
+uint pause_time;
 struct spinlock pid_lock;
 
 extern void forkret(void);
@@ -442,6 +443,19 @@ scheduler(void)
   
   c->proc = 0;
   for(;;){
+
+    // pause system_call support
+    while (ticks < pause_time){
+        for(p = proc; p < &proc[NPROC]; p++){
+          acquire(&p->lock);
+          if(p->state == RUNNING){
+            p->state = RUNNABLE;
+          }
+          release(&p->lock);
+        
+
+      }
+      pause_time = 0;
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
@@ -489,6 +503,7 @@ sched(void)
   intena = mycpu()->intena;
   swtch(&p->context, &mycpu()->context);
   mycpu()->intena = intena;
+  // printf("leave sched\n");
 }
 
 // Give up the CPU for one scheduling round.
@@ -572,33 +587,29 @@ wakeup(void *chan)
   }
 }
 //new system call - pause system
-void 
-pausesystem(void *chan, struct spinlock *lk)
+int 
+pause_system(int seconds)
 {
+  pause_time = ticks + (seconds*10);
+  yield();
+  return 0;
+}
+
+int kill_system(void){
   struct proc *p = myproc();
-  
-  // Must acquire p->lock in order to
-  // change p->state and then call sched.
-  // Once we hold p->lock, we can be
-  // guaranteed that we won't miss any wakeup
-  // (wakeup locks p->lock),
-  // so it's okay to release lk.
-
-  acquire(&p->lock);  //DOC: sleeplock1
-  release(lk);
-
-  // Go to sleep.
-  p->chan = chan;
-  p->state = SLEEPING;
-
-  sched();
-
-  // Tidy up.
-  p->chan = 0;
-
-  // Reacquire original lock.
-  release(&p->lock);
-  acquire(lk);
+  for (p = proc; p<&proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->pid != 1 && p->pid != 2){
+     p->killed = 1; 
+    }
+    if(p->state == SLEEPING){
+        // Wake process from sleep().
+        p->state = RUNNABLE;
+      }
+      // printf("%d\n", p->pid);
+    release(&p->lock);
+  }
+  return 0;
 }
 
 

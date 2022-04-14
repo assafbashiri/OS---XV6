@@ -95,31 +95,22 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+uint64
+sys_kill_system(void){
+  kill_system();
+  return 0;
+}
+
 
 uint64
-sys_pausesystem(void)
+sys_pause_system(void)
 {
-  printf("fuck tlv\n");
   int seconds;
-  uint ticks1;
+  // uint ticks1;
 
   if(argint(0, &seconds) < 0)
     return -1;
-  acquire(&tickslock);
-  ticks1 = ticks;
-  while(ticks - ticks1 < seconds){
-    //printf( "%d" ,(ticks - ticks1)*1000000);
-    //printf("\n");
-    //printf("\n");
-    if(myproc()->killed){
-      release(&tickslock);
-      return -1;
-    }
-    //yield();
-    pausesystem(&ticks, &tickslock);
-    
-  }
-  release(&tickslock);
-  return 0;
+  return pause_system(seconds);
+  
   
 }
