@@ -8,8 +8,13 @@ int main(int argv, char** argc)
     //int p;
     //fprintf(2, "we stopped process number %d\n", p);
     printf("in test befor sys\n");
-    kill_system();
+    //kill_system();
     printf("in test after sys\n");
+
+    while(1)
+    {
+        
+    }
     // pid = fork();
     // if (pid != 0)
     // {
