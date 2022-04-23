@@ -114,3 +114,9 @@ sys_pause_system(void)
   
   
 }
+
+uint64
+sys_print_stats(void)
+{
+  return print_stats();
+}

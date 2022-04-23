@@ -18,6 +18,9 @@ uint rate = 5;
 uint sleeping_processes_mean = 0;
 uint running_processes_mean = 0;
 uint runnable_processes_mean = 0;
+uint program_time;
+uint start_time;
+uint cpu_utilization;
 struct spinlock pid_lock;
 
 extern void forkret(void);
@@ -51,6 +54,7 @@ proc_mapstacks(pagetable_t kpgtbl) {
 void
 procinit(void)
 {
+  
   struct proc *p;
   
   initlock(&pid_lock, "nextpid");
@@ -59,6 +63,11 @@ procinit(void)
       initlock(&p->lock, "proc");
       p->kstack = KSTACK((int) (p - proc));
   }
+  start_time = ticks;
+  // printf("%s %d\n", "start time", start_time);
+  // printf("%s %d\n", "ticks", ticks*100000000000000);
+
+  
 }
 
 // Must be called with interrupts disabled,
@@ -131,6 +140,9 @@ found:
   p->running_time = 0;
   p->runnable_time = 0;
   p->curr_time = 0;
+
+  // program_time = 0;
+  // start_time = 0;
 
 
   // Allocate a trapframe page.
@@ -258,6 +270,7 @@ userinit(void)
 
   calc_time(p);
   p->state = RUNNABLE;
+  p->curr_time = ticks;  
   
 
   p-> last_runnable_time = ticks;
@@ -331,7 +344,10 @@ fork(void)
 
   acquire(&np->lock);
   calc_time(np);
+  // printf("1\n");
+  
   np->state = RUNNABLE;
+  p->curr_time = ticks;  
   p-> last_runnable_time = ticks;
   release(&np->lock);
 
@@ -390,8 +406,15 @@ exit(int status)
 
   p->xstate = status;
   calc_time(p);
+  // printf("2\n");
   p->state = ZOMBIE;
+  p->curr_time = ticks;  
   calc_single_proc(p);
+
+  program_time += p->running_time;
+  cpu_utilization = (program_time*100) / (ticks - start_time);
+
+
   release(&wait_lock);
 
   // Jump into the scheduler, never to return.
@@ -482,7 +505,9 @@ sjf(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
           calc_time(p);
+          // printf("3\n");
           p->state = RUNNING;
+          p->curr_time = ticks;  
           c->proc = p;
           p->last_ticks = ticks;
           swtch(&c->context, &p->context);
@@ -533,7 +558,9 @@ fcfs(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
           calc_time(p);
+          // printf("4\n");
           p->state = RUNNING;
+          p->curr_time = ticks;  
           c->proc = p;
           
           swtch(&c->context, &p->context);
@@ -577,7 +604,7 @@ void
 sched_default(void)
 {
 
-  printf("schedualer_default\n");
+  printf("default\n");
   struct proc *p;
   struct cpu *c = mycpu();
   
@@ -590,7 +617,9 @@ sched_default(void)
           acquire(&p->lock);
           if(p->state == RUNNING){
             calc_time(p);
+            // printf("5\n");
             p->state = RUNNABLE;
+            p->curr_time = ticks;  
             p-> last_runnable_time = ticks;
           }
           release(&p->lock);
@@ -609,7 +638,9 @@ sched_default(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
         calc_time(p);
+        // printf("6\n");
         p->state = RUNNING;
+        p->curr_time = ticks;  
         c->proc = p;
         swtch(&c->context, &p->context);
 
@@ -658,7 +689,9 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   calc_time(p);
+  // printf("7\n");
   p->state = RUNNABLE;
+  p->curr_time = ticks;  
   p-> last_runnable_time = ticks;
   sched();
   release(&p->lock);
@@ -705,7 +738,9 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   calc_time(p);
+  // printf("8\n");
   p->state = SLEEPING;
+  p->curr_time = ticks;  
 
   sched();
 
@@ -728,7 +763,9 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         calc_time(p);
+        // printf("9\n");
         p->state = RUNNABLE;
+        p->curr_time = ticks;  
         p-> last_runnable_time = ticks;
       }
       release(&p->lock);
@@ -744,7 +781,8 @@ pause_system(int seconds)
   return 0;
 }
 
-int kill_system(void){
+int 
+kill_system(void){
   struct proc *p = myproc();
   for (p = proc; p<&proc[NPROC]; p++){
     acquire(&p->lock);
@@ -754,12 +792,27 @@ int kill_system(void){
     if(p->state == SLEEPING){
         // Wake process from sleep().
         calc_time(p);
+        // printf("10\n");
         p->state = RUNNABLE;
+        p->curr_time = ticks;  
         p-> last_runnable_time = ticks;
       }
       // printf("%d\n", p->pid);
     release(&p->lock);
   }
+  return 0;
+}
+
+int 
+print_stats(void)
+{
+  printf("-----------------------print stats------------------------\n");
+  printf("%s%d\n", "program time is ",program_time);
+  printf("%s%d%s\n", "cpu utilization is ",cpu_utilization,"%");
+  printf("%s%d\n", "sleeping processes mean is ",sleeping_processes_mean);
+  printf("%s%d\n", "running processes mean is ",running_processes_mean);
+  printf("%s%d\n", "runnable processes mean is ",runnable_processes_mean);
+  printf("-----------------------------------------------\n");
   return 0;
 }
 
@@ -780,7 +833,9 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         calc_time(p);
+        // printf("11\n");
         p->state = RUNNABLE;
+        p->curr_time = ticks;  
         p-> last_runnable_time = ticks;
       }
       release(&p->lock);
@@ -856,9 +911,14 @@ procdump(void)
 void
 calc_time(struct proc *p)
 {
+  // if (p->pid == 2 || p->pid==1)
+  //   return;
+
+  //printf("%d\n",ticks-p->curr_time);
   if (p->state == RUNNING)
   {
-    p->running_time += (ticks - p->curr_time);   
+    p->running_time += (ticks - p->curr_time); 
+    
   }
   else if (p->state == RUNNABLE)
   {
@@ -867,8 +927,17 @@ calc_time(struct proc *p)
   else if (p->state == SLEEPING)
   {
     p->sleeping_time += (ticks - p->curr_time);
+    //printf("sleeping\n");
+    
   }
-  p->curr_time = ticks;
+  else
+  {
+    // acquire(&p->lock);
+    // printf("%s\n",p->state);
+    // release(&p->lock);
+    //printf("gggg\n");
+  }
+  
   //maybe move it to after the contact switch
   
 }
@@ -878,7 +947,12 @@ void
 calc_single_proc(struct proc *p)
 {
   sleeping_processes_mean = ((sleeping_processes_mean * NPROC) + p->sleeping_time) / (NPROC+1);
-  running_processes_mean = ((running_processes_mean * NPROC) + p->running_time) / (NPROC+1);
+  running_processes_mean = ((running_processes_mean * NPROC) + p->running_time) / (NPROC);
+  
   runnable_processes_mean = ((runnable_processes_mean * NPROC) + p->runnable_time) / (NPROC+1);
+  // printf("%s%d\n", "runnable time is ", p->runnable_time );
+  // printf("%s%d\n", "running time is ", p->running_time );
+  // printf("%s%d\n", "sleeping time is ", p->sleeping_time );
+  // printf("%s%d\n", "NPROC is ", NPROC );
 }
 
